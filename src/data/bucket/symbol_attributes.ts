@@ -14,6 +14,15 @@ export const placementOpacityAttributes: StructArrayLayout = createLayout([
     {name: 'a_fade_opacity', components: 1, type: 'Uint32'}
 ], 4);
 
+/**
+ * Per-vertex `icon-rotation-alignment`: 1 for `map`, 0 for `viewport`. Only allocated for icon
+ * buffers of layers whose `icon-rotation-alignment` is a data expression, so layers using the
+ * (usual) constant form pay nothing for it — see `u_rotate_symbol` in the symbol shaders.
+ */
+export const rotationAlignmentAttributes: StructArrayLayout = createLayout([
+    {name: 'a_rotate_symbol', components: 1, type: 'Uint8'}
+]);
+
 export const collisionVertexAttributes: StructArrayLayout = createLayout([
     {name: 'a_placed', components: 2, type: 'Uint8'},
     {name: 'a_shift', components: 2, type: 'Float32'},
