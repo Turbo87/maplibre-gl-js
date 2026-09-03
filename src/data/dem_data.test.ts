@@ -29,7 +29,7 @@ describe('DEMData', () => {
             const dem = new DEMData('0', imageData0, 'mapbox');
             expect(dem.uid).toBe('0');
             expect(dem.dim).toBe(4);
-            expect(dem.stride).toBe(6);
+            expect(dem.stride).toBe(8);
         });
 
         test('Uint8ClampedArray', () => {
@@ -38,7 +38,7 @@ describe('DEMData', () => {
             expect(dem).not.toBeNull();
             expect(dem['uid']).toBe('0');
             expect(dem['dim']).toBe(2);
-            expect(dem['stride']).toBe(4);
+            expect(dem['stride']).toBe(6);
         });
 
         test('otherEncoding', () => {
@@ -134,6 +134,22 @@ function expectDEMBackfill(dem0: DEMData, dem1: DEMData) {
 }
 
 describe('DEMData.backfillBorder with encoding', () => {
+    test('backfills both border pixels on every side and corner', () => {
+        const neighbor = new DEMData('neighbor', createMockImage(4, 4), 'terrarium');
+        for (const dx of [-1, 0, 1]) {
+            for (const dy of [-1, 0, 1]) {
+                if (dx === 0 && dy === 0) continue;
+                const dem = new DEMData('tile', createMockImage(4, 4), 'terrarium');
+                dem.backfillBorder(neighbor, dx, dy);
+                const xs = dx < 0 ? [-2, -1] : dx > 0 ? [4, 5] : [0, 1, 2, 3];
+                const ys = dy < 0 ? [-2, -1] : dy > 0 ? [4, 5] : [0, 1, 2, 3];
+                for (const x of xs) {
+                    for (const y of ys) expect(dem.get(x, y)).toBe(neighbor.get(x - dx * 4, y - dy * 4));
+                }
+            }
+        }
+    });
+
     describe('mapbox encoding', () => {
         const dem0 = new DEMData('0', createMockImage(4, 4), 'mapbox');
         const dem1 = new DEMData('1', createMockImage(4, 4), 'mapbox');
@@ -194,7 +210,7 @@ function expectSerialization(dem0: DEMData, redFactor: number, greenFactor: numb
             $name: 'DEMData',
             uid: '0',
             dim: 4,
-            stride: 6,
+            stride: 8,
             data: dem0.data,
             redFactor,
             greenFactor,
@@ -246,7 +262,17 @@ describe('UnpackVector is correctly returned', () => {
 
 function expectGetPixels(dem: DEMData, imageData: RGBAImage) {
     return () => {
-        expect(dem.getPixels()).toEqual(imageData);
+        const pixels = dem.getPixels();
+        expect([pixels.width, pixels.height]).toEqual([8, 8]);
+        for (let y = 0; y < 8; y++) {
+            for (let x = 0; x < 8; x++) {
+                const sourceX = Math.max(1, Math.min(4, x - 1));
+                const sourceY = Math.max(1, Math.min(4, y - 1));
+                const source = (sourceY * imageData.width + sourceX) * 4;
+                const destination = (y * pixels.width + x) * 4;
+                expect(pixels.data.slice(destination, destination + 4)).toEqual(imageData.data.slice(source, source + 4));
+            }
+        }
     };
 }
 

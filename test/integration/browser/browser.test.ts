@@ -60,6 +60,85 @@ describe('Browser tests', () => {
         server?.close();
     }, 40000);
 
+    test.each(['standard', 'igor', 'combined', 'multidirectional', 'basic'] as const)(
+        'Hillshade interpolation does not depend on DEM tile boundaries (%s)', async (method) => {
+            const difference = await page.evaluate(async (method) => {
+                map.remove();
+                const container = document.getElementById('map');
+                container.style.width = '128px';
+                container.style.height = '128px';
+                maplibregl.addProtocol('hillshade-test', async ({url}) => {
+                    const [z, x, y] = url.replace('hillshade-test://', '').split('/').map(Number);
+                    const size = z === 15 ? 128 : 64;
+                    const canvas = new OffscreenCanvas(size, size);
+                    const context = canvas.getContext('2d');
+                    const image = context.createImageData(size, size);
+                    for (let row = 0; row < size; row++) {
+                        for (let column = 0; column < size; column++) {
+                            const worldX = (x - 2 ** (z - 1)) * size + column;
+                            const worldY = (y - 2 ** (z - 1)) * size + row;
+                            const elevation = 1000 + 100 * Math.sin((worldX - 64) * 0.2 + 3.8) + 80 * Math.cos((worldY - 64) * 0.17 + 0.8);
+                            const encoded = Math.round((elevation + 32768) * 256);
+                            const index = (row * size + column) * 4;
+                            image.data[index] = (encoded >> 16) & 255;
+                            image.data[index + 1] = (encoded >> 8) & 255;
+                            image.data[index + 2] = encoded & 255;
+                            image.data[index + 3] = 255;
+                        }
+                    }
+                    context.putImageData(image, 0, 0);
+                    return {data: await (await canvas.convertToBlob()).arrayBuffer()};
+                });
+
+                const images: Uint8Array[] = [];
+                // Both tilings have the same ground resolution. Zooms 15+ avoid zoom-dependent exaggeration.
+                for (const z of [15, 16]) {
+                    const terrainMap = new maplibregl.Map({
+                        container,
+                        center: [360 * (16384.5 / 32768) - 180, -Math.atan(Math.sinh(Math.PI / 32768)) * 180 / Math.PI],
+                        zoom: 14,
+                        pixelRatio: 2,
+                        canvasContextAttributes: {preserveDrawingBuffer: true},
+                        style: {
+                            version: 8,
+                            sources: {dem: {type: 'raster-dem', tiles: ['hillshade-test://{z}/{x}/{y}'],
+                                tileSize: z === 15 ? 128 : 64, minzoom: z, maxzoom: z, encoding: 'terrarium'}},
+                            layers: [
+                                {id: 'background', type: 'background', paint: {'background-color': 'white'}},
+                                {id: 'hillshade', type: 'hillshade', source: 'dem', paint: {'hillshade-method': method, resampling: 'linear'}}
+                            ]
+                        }
+                    });
+                    await new Promise<void>((resolve, reject) => {
+                        terrainMap.once('idle', () => resolve());
+                        terrainMap.on('error', (event) => reject(event.error));
+                    });
+                    const canvas = terrainMap.getCanvas();
+                    const gl = canvas.getContext('webgl2');
+                    const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+                    gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+                    images.push(pixels);
+                    terrainMap.remove();
+                }
+                maplibregl.removeProtocol('hillshade-test');
+                let maximum = 0;
+                for (let i = 0; i < images[0].length; i++) {
+                    maximum = Math.max(maximum, Math.abs(images[0][i] - images[1][i]));
+                }
+                return {maximum, ranges: images.map((pixels) => {
+                    let min = 255;
+                    let max = 0;
+                    for (let i = 0; i < pixels.length; i += 4) {
+                        min = Math.min(min, pixels[i]);
+                        max = Math.max(max, pixels[i]);
+                    }
+                    return [min, max];
+                })};
+            }, method);
+            for (const [min, max] of difference.ranges) expect(max - min).toBeGreaterThan(0);
+            expect(difference.maximum).toBeLessThanOrEqual(1);
+        });
+
     test('Contextmenu event triggered during scrollzoom', {retry: 3, timeout: 20000}, async () => {
         const contextMenuEventFired = await page.evaluate(() => {
             return new Promise<string>((resolve, _reject) => {
