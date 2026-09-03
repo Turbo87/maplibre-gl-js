@@ -34,9 +34,11 @@ export class DEMData {
     baseShift: number;
 
     /**
-     * Constructs a `DEMData` object
+     * Constructs a `DEMData` object using the supplied pixel buffer.
+     * Two DEM border pixels supply the Sobel kernel for one border pixel of hillshade derivatives.
+     * The border is clamped to the tile edge until neighboring tiles backfill it.
      * @param uid - the tile's unique id
-     * @param data - Square RGBAImage data with uniform 1px padding on all sides.
+     * @param data - Square RGBAImage data with uniform 2px padding on all sides.
      * @param encoding - the encoding type of the data
      * @param redFactor - the red channel factor used to unpack the data, used for `custom` encoding only
      * @param greenFactor - the green channel factor used to unpack the data, used for `custom` encoding only
@@ -50,9 +52,9 @@ export class DEMData {
             warnOnce(`"${encoding}" is not a valid encoding type. Valid types include "mapbox", "terrarium" and "custom".`);
             return;
         }
-        this.stride = data.height + 2;
-        const dim = this.dim = data.height - 2;
-        this.data = new Uint32Array(this.stride * this.stride);
+        this.stride = data.height;
+        const dim = this.dim = data.height - 4;
+        this.data = new Uint32Array(data.data.buffer);
         DEMData.byteViewCache.set(this, new Uint8Array(this.data.buffer));
         switch (encoding) {
             case 'terrarium':
@@ -80,14 +82,11 @@ export class DEMData {
                 break;
         }
 
-        // Two DEM border pixels supply the Sobel kernel for one border pixel of hillshade derivatives.
-        // Clamp to the tile edge until neighboring tiles backfill the border.
-        const source = new Uint32Array(data.data.buffer);
         for (let y = -2; y < dim + 2; y++) {
-            const offset = (Math.max(0, Math.min(dim - 1, y)) + 1) * data.width + 1;
-            this.data.set(source.subarray(offset, offset + dim), this._idx(0, y));
-            this.data.fill(source[offset], this._idx(-2, y), this._idx(0, y));
-            this.data.fill(source[offset + dim - 1], this._idx(dim, y), this._idx(dim + 1, y) + 1);
+            const offset = this._idx(0, Math.max(0, Math.min(dim - 1, y)));
+            if (y < 0 || y >= dim) this.data.copyWithin(this._idx(0, y), offset, offset + dim);
+            this.data.fill(this.data[offset], this._idx(-2, y), this._idx(0, y));
+            this.data.fill(this.data[offset + dim - 1], this._idx(dim, y), this._idx(dim + 1, y) + 1);
         }
 
         // calculate min/max values

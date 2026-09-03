@@ -7,6 +7,7 @@ import {ImageRequest} from '../util/image_request.ts';
 import {type Tile} from '../tile/tile.ts';
 import {getMockDispatcher} from '../util/test/util.ts';
 import {sleep, waitForEvent, waitForMetadataEvent} from '../util/test/util.ts';
+import {browser} from '../util/browser.ts';
 import type {MapSourceDataEvent} from '../ui/events.ts';
 
 function createSource(options, transformCallback?) {
@@ -35,6 +36,17 @@ describe('RasterDEMTileSource', () => {
     afterEach(() => {
         server.restore();
         vi.restoreAllMocks();
+    });
+
+    test('decodes images with a two-pixel border', async () => {
+        const source = new RasterDEMTileSource('id', {type: 'raster-dem'}, getMockDispatcher(), undefined);
+        const image = await createImageBitmap(new ImageData(4, 4));
+
+        const getImageData = vi.spyOn(browser, 'getImageData').mockReturnValue(new ImageData(8, 8));
+
+        await source.readImageNow(image);
+
+        expect(getImageData).toHaveBeenCalledWith(image, 2);
     });
 
     test('transforms request for TileJSON URL', () => {

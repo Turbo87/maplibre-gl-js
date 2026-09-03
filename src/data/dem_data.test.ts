@@ -4,9 +4,9 @@ import {RGBAImage} from '../util/image.ts';
 import {serialize, deserialize} from '../util/web_worker_transfer.ts';
 
 function createMockImage(height, width) {
-    // RGBAImage passed to constructor has uniform 1px padding on all sides.
-    height += 2;
-    width += 2;
+    // RGBAImage passed to constructor has uniform 2px padding on all sides.
+    height += 4;
+    width += 4;
     const pixels = new Uint8Array(height * width * 4);
     for (let i = 0; i < pixels.length; i++) {
         pixels[i] = (i + 1) % 4 === 0 ? 1 : Math.floor(Math.random() * 256);
@@ -30,15 +30,17 @@ describe('DEMData', () => {
             expect(dem.uid).toBe('0');
             expect(dem.dim).toBe(4);
             expect(dem.stride).toBe(8);
+            expect(dem.data.buffer).toBe(imageData0.data.buffer);
         });
 
         test('Uint8ClampedArray', () => {
-            const imageData0 = createMockClampImage(4, 4);
+            const imageData0 = createMockClampImage(6, 6);
             const dem = new DEMData('0', imageData0, 'mapbox');
             expect(dem).not.toBeNull();
             expect(dem['uid']).toBe('0');
             expect(dem['dim']).toBe(2);
             expect(dem['stride']).toBe(6);
+            expect(dem.data.buffer).toBe(imageData0.data.buffer);
         });
 
         test('otherEncoding', () => {
@@ -170,13 +172,15 @@ describe('DEMData.backfillBorder with encoding', () => {
 describe('DEMData.sampleBilinear', () => {
     test('interpolates four neighboring pixels', () => {
         const elevations = [
-            0, 0, 0, 0,
-            0, 10, 20, 0,
-            0, 30, 40, 0,
-            0, 0, 0, 0
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 10, 20, 0, 0,
+            0, 0, 30, 40, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0
         ];
         const pixels = new Uint8Array(elevations.flatMap(elevation => [elevation, 0, 0, 0]));
-        const dem = new DEMData('sample', new RGBAImage({height: 4, width: 4}, pixels), 'custom', 1.0, 0.0, 0.0, 0.0);
+        const dem = new DEMData('sample', new RGBAImage({height: 6, width: 6}, pixels), 'custom', 1.0, 0.0, 0.0, 0.0);
 
         expect(dem.sampleBilinear(0, 0)).toBe(10);
         expect(dem.sampleBilinear(0.5, 0.5)).toBe(25);
@@ -266,8 +270,8 @@ function expectGetPixels(dem: DEMData, imageData: RGBAImage) {
         expect([pixels.width, pixels.height]).toEqual([8, 8]);
         for (let y = 0; y < 8; y++) {
             for (let x = 0; x < 8; x++) {
-                const sourceX = Math.max(1, Math.min(4, x - 1));
-                const sourceY = Math.max(1, Math.min(4, y - 1));
+                const sourceX = Math.max(2, Math.min(5, x));
+                const sourceY = Math.max(2, Math.min(5, y));
                 const source = (sourceY * imageData.width + sourceX) * 4;
                 const destination = (y * pixels.width + x) * 4;
                 expect(pixels.data.slice(destination, destination + 4)).toEqual(imageData.data.slice(source, source + 4));
