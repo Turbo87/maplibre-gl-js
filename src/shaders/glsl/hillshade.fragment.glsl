@@ -1,5 +1,8 @@
 uniform sampler2D u_image;
-in vec2 v_pos;
+// The texture coordinate needs highp: at mediump (16-bit on mobile GPUs) it is
+// quantised to a fraction of a DEM sample, which shows as bands and stair steps
+// when the DEM is overzoomed.
+in highp vec2 v_pos;
 
 uniform vec2 u_latrange;
 uniform float u_exaggeration;
@@ -151,8 +154,8 @@ void combined_hillshade(vec2 deriv)
 }
 
 void main() {
-    vec2 size = vec2(textureSize(u_image, 0));
-    vec2 texturePos = (v_pos * (size - 2.0) + 1.0) / size;
+    highp vec2 size = vec2(textureSize(u_image, 0));
+    highp vec2 texturePos = (v_pos * (size - 2.0) + 1.0) / size;
     vec4 pixel = texture(u_image, texturePos);
 
     // We divide the slope by a scale factor based on the cosin of the pixel's approximate latitude
